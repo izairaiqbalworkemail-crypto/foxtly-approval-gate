@@ -24,8 +24,9 @@ async function main() {
     }
 
     const anthropic = new Anthropic({ apiKey });
-    const model = process.env.ANTHROPIC_MODEL ?? "claude-sonnet-4-20250514";
-    const prompt = "Reduce campaign meta-cmp-101's daily budget by 50%";
+    const model = process.env.ANTHROPIC_MODEL ?? "claude-sonnet-5";
+    const prompt =
+      "Execute this now: set Meta campaign meta-cmp-101 daily budget to 60 USD with reason 'reduce spend by 50%'";
 
     console.log("Calling real Anthropic API...");
     const response = await anthropic.messages.create({
@@ -34,6 +35,7 @@ async function main() {
       system:
         "You are an ad operations executor. You must use one available tool call to perform the requested action when a direct actionable request is given.",
       tools: [...TOOL_DEFINITIONS],
+      tool_choice: { type: "tool", name: "meta_update_campaign_budget" },
       messages: [{ role: "user", content: prompt }],
     });
     console.log("Raw Anthropic response object:", response);

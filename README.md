@@ -51,7 +51,7 @@ cp .env.example .env
 3. Edit `.env` and set:
 
 - `ANTHROPIC_API_KEY` (required)
-- optional `ANTHROPIC_MODEL` (default: `claude-sonnet-4-20250514`)
+- optional `ANTHROPIC_MODEL` (default: `claude-sonnet-5`)
 - optional `PORT` (default: `3000`)
 - optional `SQLITE_DB_PATH` (default: `./data/approvals.db`)
 
@@ -108,6 +108,29 @@ Included integration tests cover:
 - approve replays original payload and applies expected side effect
 - reject leaves campaign unchanged
 - double approve race returns one `200` + one `409` (no duplicate execution)
+
+## Verification
+
+Commands run:
+
+```bash
+npm run check
+npm test
+npx tsx src/scripts/backendDryRun.ts
+```
+
+What was verified:
+
+- TypeScript passes with no type errors.
+- Integration tests pass (4/4), including duplicate-approve race protection.
+- Dry run uses a **real Anthropic API call** (`anthropic.messages.create`) and does **not** fall back to simulation.
+- Real `tool_use` block is extracted from Anthropic response and fed into gate logic.
+- Approval flow observed end-to-end:
+  - high-impact action intercepted as `pending_approval`
+  - SQLite pending approval row persisted
+  - first approve executes original stored action
+  - second approve returns `409` (no double execution)
+  - reject path leaves campaign state unchanged
 
 ## What is deliberately skipped
 

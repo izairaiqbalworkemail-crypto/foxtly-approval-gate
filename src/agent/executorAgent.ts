@@ -23,7 +23,7 @@ export class ExecutorAgent {
       throw new Error("Missing ANTHROPIC_API_KEY environment variable");
     }
     this.anthropic = new Anthropic({ apiKey });
-    this.model = process.env.ANTHROPIC_MODEL ?? "claude-sonnet-4-20250514";
+    this.model = process.env.ANTHROPIC_MODEL ?? "claude-sonnet-5";
   }
 
   async run(userPrompt: string): Promise<RunResult> {
