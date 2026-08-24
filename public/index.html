@@ -1,0 +1,219 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Approval Gate Console</title>
+    <style>
+      :root {
+        --bg: #f7f7f2;
+        --panel: #fffdf7;
+        --ink: #1e293b;
+        --muted: #475569;
+        --accent: #0f766e;
+        --warn: #9a3412;
+        --border: #d6d3d1;
+      }
+
+      * {
+        box-sizing: border-box;
+      }
+
+      body {
+        margin: 0;
+        font-family: "IBM Plex Sans", "Segoe UI", sans-serif;
+        color: var(--ink);
+        background: radial-gradient(circle at 20% 10%, #fef3c7 0, transparent 35%),
+          radial-gradient(circle at 80% 80%, #bfdbfe 0, transparent 30%), var(--bg);
+      }
+
+      main {
+        max-width: 1000px;
+        margin: 0 auto;
+        padding: 20px;
+      }
+
+      h1 {
+        margin: 0 0 6px;
+      }
+
+      .panel {
+        background: var(--panel);
+        border: 1px solid var(--border);
+        border-radius: 12px;
+        padding: 16px;
+        margin-bottom: 16px;
+        box-shadow: 0 8px 18px rgba(15, 23, 42, 0.07);
+      }
+
+      .row {
+        display: flex;
+        gap: 10px;
+        flex-wrap: wrap;
+      }
+
+      textarea,
+      input,
+      button {
+        font: inherit;
+      }
+
+      textarea,
+      input {
+        width: 100%;
+        border: 1px solid var(--border);
+        border-radius: 8px;
+        padding: 10px;
+      }
+
+      textarea {
+        min-height: 90px;
+      }
+
+      button {
+        border: 1px solid var(--ink);
+        border-radius: 8px;
+        background: white;
+        color: var(--ink);
+        padding: 8px 12px;
+        cursor: pointer;
+      }
+
+      button.primary {
+        background: var(--accent);
+        color: white;
+        border-color: var(--accent);
+      }
+
+      button.reject {
+        border-color: var(--warn);
+        color: var(--warn);
+      }
+
+      .meta {
+        color: var(--muted);
+        font-size: 0.92rem;
+      }
+
+      .approval {
+        border: 1px solid var(--border);
+        border-radius: 10px;
+        padding: 12px;
+        margin-bottom: 10px;
+      }
+
+      pre {
+        white-space: pre-wrap;
+        word-break: break-word;
+        background: #f8fafc;
+        border: 1px solid var(--border);
+        border-radius: 8px;
+        padding: 10px;
+      }
+
+      @media (max-width: 720px) {
+        main {
+          padding: 12px;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <main>
+      <h1>Approval Gate Console</h1>
+      <p class="meta">Run an executor prompt, then review and decide pending high-impact actions.</p>
+
+      <section class="panel">
+        <h2>Run Executor Prompt</h2>
+        <textarea id="prompt">Check account meta-act-1001 and increase budget for campaign meta-cmp-101 to 170 USD if performance is healthy.</textarea>
+        <div class="row" style="margin-top: 10px">
+          <button class="primary" id="runPromptBtn">Run Prompt</button>
+          <button id="refreshBtn">Refresh Approvals</button>
+        </div>
+        <h3>Latest Agent Response</h3>
+        <pre id="agentOutput">No run yet.</pre>
+      </section>
+
+      <section class="panel">
+        <h2>Pending Approvals</h2>
+        <div id="approvals"></div>
+      </section>
+    </main>
+
+    <script>
+      const approvalsEl = document.getElementById("approvals");
+      const outputEl = document.getElementById("agentOutput");
+
+      async function runPrompt() {
+        const prompt = document.getElementById("prompt").value;
+        outputEl.textContent = "Running...";
+        const response = await fetch("/api/agent/run", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ prompt }),
+        });
+        const data = await response.json();
+        outputEl.textContent = JSON.stringify(data, null, 2);
+        await loadApprovals();
+      }
+
+      async function loadApprovals() {
+        const response = await fetch("/api/approvals?status=pending");
+        const data = await response.json();
+        approvalsEl.innerHTML = "";
+
+        if (!data.approvals || data.approvals.length === 0) {
+          approvalsEl.innerHTML = "<p class=\"meta\">No pending approvals.</p>";
+          return;
+        }
+
+        for (const approval of data.approvals) {
+          const card = document.createElement("div");
+          card.className = "approval";
+          card.innerHTML = `
+            <strong>${approval.id}</strong>
+            <div class="meta">${approval.provider} | ${approval.toolName} | ${approval.campaignKey}</div>
+            <div class="meta">Created: ${approval.createdAt}</div>
+            <pre>${approval.payloadJson}</pre>
+            <div class="row">
+              <input placeholder="Decider name" id="decider-${approval.id}" value="reviewer-ui" />
+              <button class="primary" data-approve="${approval.id}">Approve + Execute</button>
+              <button class="reject" data-reject="${approval.id}">Reject</button>
+            </div>
+          `;
+          approvalsEl.appendChild(card);
+        }
+
+        document.querySelectorAll("[data-approve]").forEach((btn) => {
+          btn.addEventListener("click", async () => {
+            const id = btn.getAttribute("data-approve");
+            const decidedBy = document.getElementById(`decider-${id}`).value || "reviewer-ui";
+            await fetch(`/api/approvals/${id}/approve`, {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ decidedBy }),
+            });
+            await loadApprovals();
+          });
+        });
+
+        document.querySelectorAll("[data-reject]").forEach((btn) => {
+          btn.addEventListener("click", async () => {
+            const id = btn.getAttribute("data-reject");
+            const decidedBy = document.getElementById(`decider-${id}`).value || "reviewer-ui";
+            await fetch(`/api/approvals/${id}/reject`, {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ decidedBy }),
+            });
+            await loadApprovals();
+          });
+        });
+      }
+
+      document.getElementById("runPromptBtn").addEventListener("click", runPrompt);
+      document.getElementById("refreshBtn").addEventListener("click", loadApprovals);
+      loadApprovals();
+    </script>
+  </body>
+</html>
